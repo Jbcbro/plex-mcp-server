@@ -1,0 +1,16 @@
+node_modules
+build
+dist
+exports
+.env
+.env.*
+.git
+.github
+.vscode
+.idea
+*.log
+logs
+*.md
+!package.json
+LICENSE.md
+docs
