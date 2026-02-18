@@ -3,12 +3,15 @@
 import "dotenv/config";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
+import http from "node:http";
+import { randomUUID } from "node:crypto";
 
 // Plex shared module
 import {
@@ -70,9 +73,60 @@ class PlexArrMCPServer {
   }
 
   async run() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error("Plex-Arr MCP server running on stdio");
+    const mode = process.env.TRANSPORT;
+    if (mode === "http") {
+      const port = parseInt(process.env.MCP_PORT || "3000", 10);
+      const transports = new Map<string, StreamableHTTPServerTransport>();
+
+      const httpServer = http.createServer(async (req, res) => {
+        if (req.url !== "/mcp") {
+          res.writeHead(404).end("Not found");
+          return;
+        }
+
+        if (req.method === "DELETE") {
+          const sessionId = req.headers["mcp-session-id"] as string | undefined;
+          const transport = sessionId ? transports.get(sessionId) : undefined;
+          if (transport) {
+            await transport.close();
+            transports.delete(sessionId!);
+          }
+          res.writeHead(200).end();
+          return;
+        }
+
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        let transport: StreamableHTTPServerTransport;
+
+        if (sessionId && transports.has(sessionId)) {
+          transport = transports.get(sessionId)!;
+        } else if (!sessionId && req.method === "POST") {
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+          });
+          await this.server.connect(transport);
+          transport.onclose = () => {
+            if (transport.sessionId) {
+              transports.delete(transport.sessionId);
+            }
+          };
+          transports.set(transport.sessionId!, transport);
+        } else {
+          res.writeHead(400).end("Bad request: missing session ID");
+          return;
+        }
+
+        await transport.handleRequest(req, res);
+      });
+
+      httpServer.listen(port, "0.0.0.0", () => {
+        console.error(`Plex-Arr MCP server running on http://0.0.0.0:${port}/mcp`);
+      });
+    } else {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      console.error("Plex-Arr MCP server running on stdio");
+    }
   }
 }
 

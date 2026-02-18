@@ -29,7 +29,7 @@ The image supports three server modes via the `SERVER_MODE` environment variable
 ### Plex-only server
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   -e PLEX_URL=http://your-plex-ip:32400 \
   -e PLEX_TOKEN=your_plex_token \
   ghcr.io/jbcbro/plex-mcp-server:main
@@ -38,7 +38,7 @@ docker run -i --rm \
 ### Plex + Arr server (Sonarr/Radarr)
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   -e SERVER_MODE=arr \
   -e PLEX_URL=http://your-plex-ip:32400 \
   -e PLEX_TOKEN=your_plex_token \
@@ -52,7 +52,7 @@ docker run -i --rm \
 ### Plex + Trakt server
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   -e SERVER_MODE=trakt \
   -e PLEX_URL=http://your-plex-ip:32400 \
   -e PLEX_TOKEN=your_plex_token \
@@ -66,7 +66,7 @@ docker run -i --rm \
 Create a `.env` file with your configuration (see `.env.example` for reference), then:
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   --env-file .env \
   ghcr.io/jbcbro/plex-mcp-server:main
 ```
@@ -74,7 +74,7 @@ docker run -i --rm \
 To use a different server mode with an env file, add `SERVER_MODE` to your `.env` or pass it directly:
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   --env-file .env \
   -e SERVER_MODE=arr \
   ghcr.io/jbcbro/plex-mcp-server:main
@@ -82,13 +82,14 @@ docker run -i --rm \
 
 ## Docker Compose
 
-Create a `docker-compose.yml`:
+### Basic (Plex only)
 
 ```yaml
 services:
   plex-mcp-server:
     image: ghcr.io/jbcbro/plex-mcp-server:main
-    stdin_open: true
+    ports:
+      - "3000:3000"
     environment:
       - SERVER_MODE=plex
       - PLEX_URL=http://your-plex-ip:32400
@@ -97,7 +98,29 @@ services:
       - ./exports:/app/exports
 ```
 
-Then run:
+### With Arr Stack (Plex + Sonarr + Radarr)
+
+If you already have Sonarr and Radarr running, just point the MCP server at their APIs:
+
+```yaml
+services:
+  plex-mcp-server:
+    image: ghcr.io/jbcbro/plex-mcp-server:main
+    ports:
+      - "3000:3000"
+    environment:
+      - SERVER_MODE=arr
+      - PLEX_URL=http://your-plex-ip:32400
+      - PLEX_TOKEN=your_plex_token
+      - SONARR_URL=http://your-sonarr-ip:8989
+      - SONARR_API_KEY=your_sonarr_api_key
+      - RADARR_URL=http://your-radarr-ip:7878
+      - RADARR_API_KEY=your_radarr_api_key
+    volumes:
+      - ./exports:/app/exports
+```
+
+### Running
 
 ```bash
 docker compose up
@@ -105,59 +128,33 @@ docker compose up
 
 ## Configuring with Claude Desktop
 
-Add the following to your Claude Desktop MCP config (`claude_desktop_config.json`):
+With the Docker container running (see above), add the following to your Claude Desktop MCP config (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "plex": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "PLEX_URL=http://your-plex-ip:32400",
-        "-e", "PLEX_TOKEN=your_plex_token",
-        "ghcr.io/jbcbro/plex-mcp-server:main"
-      ]
+      "url": "http://localhost:3000/mcp"
     }
   }
 }
 ```
 
-For the Arr variant:
-
-```json
-{
-  "mcpServers": {
-    "plex-arr": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "SERVER_MODE=arr",
-        "-e", "PLEX_URL=http://your-plex-ip:32400",
-        "-e", "PLEX_TOKEN=your_plex_token",
-        "-e", "SONARR_URL=http://your-sonarr-ip:8989",
-        "-e", "SONARR_API_KEY=your_sonarr_api_key",
-        "-e", "RADARR_URL=http://your-radarr-ip:7878",
-        "-e", "RADARR_API_KEY=your_radarr_api_key",
-        "ghcr.io/jbcbro/plex-mcp-server:main"
-      ]
-    }
-  }
-}
-```
+This works for all server modes — just make sure the container is started with the desired `SERVER_MODE`.
 
 ## Networking Notes
 
 - The container needs network access to your Plex server. If Plex runs on the host machine, use `host.docker.internal` instead of `localhost` in `PLEX_URL` (e.g., `http://host.docker.internal:32400`).
 - The same applies for Sonarr/Radarr URLs when using the `arr` mode.
-- This MCP server communicates over **stdio** (not HTTP), so no ports need to be exposed.
+- The Docker image defaults to HTTP transport (`TRANSPORT=http`) on port 3000. Map the port with `-p 3000:3000`.
+- To use a custom port, set `MCP_PORT` and update the port mapping accordingly (e.g., `-e MCP_PORT=8080 -p 8080:8080`).
 
 ## Persisting Exports
 
 The library export feature writes to `/app/exports` inside the container. Mount a volume to persist these files:
 
 ```bash
-docker run -i --rm \
+docker run --rm -p 3000:3000 \
   -e PLEX_URL=http://your-plex-ip:32400 \
   -e PLEX_TOKEN=your_plex_token \
   -v ./exports:/app/exports \
@@ -168,6 +165,8 @@ docker run -i --rm \
 
 | Variable              | Required | Default                    | Description                     |
 |-----------------------|----------|----------------------------|---------------------------------|
+| `TRANSPORT`           | No       | `http` (Docker) / `stdio`  | Transport mode: `stdio` or `http` |
+| `MCP_PORT`            | No       | `3000`                     | Port for HTTP transport         |
 | `SERVER_MODE`         | No       | `plex`                     | Server variant: `plex`, `arr`, `trakt` |
 | `PLEX_URL`            | Yes      | `http://localhost:32400`   | Plex server URL                 |
 | `PLEX_TOKEN`          | Yes      | —                          | Plex authentication token       |

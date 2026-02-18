@@ -30,6 +30,10 @@ ENV NODE_ENV=production
 # Override with SERVER_MODE env var (see entrypoint below)
 ENV SERVER_MODE=plex
 
+# Use HTTP transport for Docker (instead of stdio)
+ENV TRANSPORT=http
+EXPOSE 3000
+
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
