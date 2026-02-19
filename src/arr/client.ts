@@ -128,7 +128,9 @@ export class SonarrClient extends ArrClient {
 
   async getCalendar(startDate?: string, endDate?: string): Promise<SonarrCalendarEntry[]> {
     const start = startDate || new Date(Date.now() - ARR_CALENDAR_DAYS_PAST * 86400000).toISOString().split("T")[0];
-    const end = endDate || new Date(Date.now() + ARR_CALENDAR_DAYS_FUTURE * 86400000).toISOString().split("T")[0];
+    const endBase = endDate || new Date(Date.now() + ARR_CALENDAR_DAYS_FUTURE * 86400000).toISOString().split("T")[0];
+    // Sonarr's calendar API treats end as exclusive, so add 1 day to include the end date
+    const end = new Date(new Date(endBase).getTime() + 86400000).toISOString().split("T")[0];
     const { data } = await this.http.get<SonarrCalendarEntry[]>("/calendar", {
       params: { start, end, unmonitored: false, includeSeries: true },
     });
@@ -189,7 +191,9 @@ export class RadarrClient extends ArrClient {
 
   async getCalendar(startDate?: string, endDate?: string): Promise<RadarrCalendarEntry[]> {
     const start = startDate || new Date(Date.now() - ARR_CALENDAR_DAYS_PAST * 86400000).toISOString().split("T")[0];
-    const end = endDate || new Date(Date.now() + ARR_CALENDAR_DAYS_FUTURE * 86400000).toISOString().split("T")[0];
+    const endBase = endDate || new Date(Date.now() + ARR_CALENDAR_DAYS_FUTURE * 86400000).toISOString().split("T")[0];
+    // Radarr's calendar API treats end as exclusive, so add 1 day to include the end date
+    const end = new Date(new Date(endBase).getTime() + 86400000).toISOString().split("T")[0];
     const { data } = await this.http.get<RadarrCalendarEntry[]>("/calendar", {
       params: { start, end, unmonitored: false },
     });
